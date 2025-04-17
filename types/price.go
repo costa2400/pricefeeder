@@ -9,15 +9,18 @@ import (
 )
 
 const (
+	// PriceTimeout defines how long a price is considered valid after being fetched
 	PriceTimeout = 15 * time.Second
 )
 
+// RawPrice represents a price fetched from an exchange with its timestamp
 type RawPrice struct {
 	Price      float64
 	UpdateTime time.Time
 }
 
-// Price defines the price of a symbol.
+// Price defines the processed price data that will be submitted to the blockchain.
+// It includes metadata like the source and validity status.
 type Price struct {
 	// Pair defines the symbol we're posting prices for.
 	Pair asset.Pair
@@ -31,7 +34,8 @@ type Price struct {
 	Valid bool
 }
 
-// FetchPricesFunc is the function used to fetch updated prices.
+// FetchPricesFunc is the function type used to fetch updated prices from an exchange.
+// Each price source implements this function to query their specific API.
 // The symbols passed are the symbols we require prices for.
 // The returned map must map symbol to its float64 price, or an error.
 // If there's a failure in updating only one price then the map can be returned

@@ -1,3 +1,6 @@
+// Package metrics defines monitoring instrumentation for the pricefeeder.
+// It provides Prometheus metrics for operational, data quality, and system health monitoring.
+// These metrics help track the performance, reliability, and accuracy of the price feed process.
 package metrics
 
 import (

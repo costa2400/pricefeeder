@@ -18,6 +18,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// setupLogger configures the application logger.
+// Debug mode can be enabled with a command-line flag.
 func setupLogger() zerolog.Logger {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	debug := flag.Bool("debug", false, "sets log level to debug")
@@ -44,6 +46,12 @@ func handleInterrupt(logger zerolog.Logger, f *feeder.Feeder) {
 	}()
 }
 
+// rootCmd is the main command for the pricefeeder CLI.
+// It starts the pricefeeder service and its required components:
+// - event stream (for blockchain connectivity)
+// - price provider (for fetching prices from exchanges)
+// - price poster (for sending transactions to the blockchain)
+// - metrics server (for monitoring)
 var rootCmd = &cobra.Command{
 	Use:   "pricefeeder",
 	Short: "Pricefeeder daemon for posting prices to Nibiru Chain",
@@ -82,6 +90,8 @@ var rootCmd = &cobra.Command{
 	},
 }
 
+// Execute runs the root command.
+// Called by main.go to start the application.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

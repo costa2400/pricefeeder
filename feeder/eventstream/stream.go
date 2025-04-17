@@ -18,12 +18,16 @@ import (
 var _ types.EventStream = (*Stream)(nil)
 
 // wsI exists for testing purposes.
+// Interface for WebSocket connection that provides message channels
 type wsI interface {
 	message() <-chan []byte
 	close()
 }
 
-// Dial opens two connections to the given endpoint, one for the websocket and one for the oracle grpc.
+// Dial opens two connections to the blockchain:
+// 1. WebSocket for real-time event subscription (new blocks)
+// 2. gRPC for querying oracle parameters
+// Returns a stream that manages both connections
 func Dial(tendermintRPCEndpoint string, grpcEndpoint string, enableTLS bool, logger zerolog.Logger) *Stream {
 	var transportDialOpt grpc.DialOption
 
@@ -56,6 +60,7 @@ func Dial(tendermintRPCEndpoint string, grpcEndpoint string, enableTLS bool, log
 	return newStream(ws, oracleClient, logger)
 }
 
+// newStream creates a Stream instance with required channels and starts background goroutines
 func newStream(ws wsI, oracle oracletypes.QueryClient, logger zerolog.Logger) *Stream {
 	stream := &Stream{
 		stopSignal:          make(chan struct{}),
@@ -73,6 +78,9 @@ func newStream(ws wsI, oracle oracletypes.QueryClient, logger zerolog.Logger) *S
 	return stream
 }
 
+// Stream manages blockchain connectivity and event monitoring.
+// It listens for new blocks and oracle parameter changes, then forwards
+// these events through channels to the feeder.
 type Stream struct {
 	stopSignal          chan struct{} // external signal to stop the stream
 	waitGroup           *sync.WaitGroup
@@ -81,6 +89,8 @@ type Stream struct {
 	params              *atomic.Pointer[types.Params]
 }
 
+// votingPeriodStartedLoop monitors new blocks and detects the start of voting periods.
+// It sends a signal through votingPeriodChannel when a new voting period starts.
 func (s *Stream) votingPeriodStartedLoop(ws wsI, logger zerolog.Logger) {
 	defer func() {
 		logger.Info().Msg("exited loop")
@@ -122,7 +132,8 @@ func (s *Stream) votingPeriodStartedLoop(ws wsI, logger zerolog.Logger) {
 	}
 }
 
-// paramsLoop calls every 10 seconds the oracle grpc to obtain the current params as a way to keep the params up to date.
+// paramsLoop periodically fetches oracle parameters from the blockchain.
+// It updates the local params and signals changes through paramsChannel.
 func (s *Stream) paramsLoop(oracleClient oracletypes.QueryClient, logger zerolog.Logger) {
 	tick := time.NewTicker(10 * time.Second)
 	defer func() {
@@ -171,15 +182,18 @@ func (s *Stream) paramsLoop(oracleClient oracletypes.QueryClient, logger zerolog
 	}
 }
 
+// Close shuts down all goroutines and connections managed by the Stream.
 func (s *Stream) Close() {
 	close(s.stopSignal)
 	s.waitGroup.Wait()
 }
 
+// ParamsUpdate returns a channel that receives oracle parameter updates.
 func (s *Stream) ParamsUpdate() <-chan types.Params {
 	return s.paramsChannel
 }
 
+// VotingPeriodStarted returns a channel that signals the start of new voting periods.
 func (s *Stream) VotingPeriodStarted() <-chan types.VotingPeriod {
 	return s.votingPeriodChannel
 }

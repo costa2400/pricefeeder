@@ -9,23 +9,27 @@ import (
 )
 
 var (
+	// InitTimeout defines how long to wait for initial parameters before failing
 	InitTimeout = 15 * time.Second
 )
 
-// Feeder is the price feeder.
+// Feeder is the core component that coordinates price fetching and submission.
+// It connects to the blockchain, listens for events that trigger price updates,
+// fetches prices from exchanges, and submits them to the blockchain.
 type Feeder struct {
 	logger zerolog.Logger
 
-	stop chan struct{}
-	done chan struct{}
+	stop chan struct{} // Signal to stop the feeder
+	done chan struct{} // Signal that the feeder has stopped
 
-	params types.Params
+	params types.Params // Oracle module parameters
 
-	eventStream   types.EventStream
-	pricePoster   types.PricePoster
-	priceProvider types.PriceProvider
+	eventStream   types.EventStream   // Connects to the blockchain and receives events
+	pricePoster   types.PricePoster   // Submits price votes to the blockchain
+	priceProvider types.PriceProvider // Fetches prices from exchanges
 }
 
+// NewFeeder creates a new price feeder instance with provided dependencies.
 func NewFeeder(eventStream types.EventStream, priceProvider types.PriceProvider, pricePoster types.PricePoster, logger zerolog.Logger) *Feeder {
 	f := &Feeder{
 		logger:        logger,
@@ -40,7 +44,7 @@ func NewFeeder(eventStream types.EventStream, priceProvider types.PriceProvider,
 	return f
 }
 
-// Run instantiates a new Feeder instance.
+// Run starts the feeder's main loop that listens for events and processes them.
 func (f *Feeder) Run() {
 	f.initParamsOrDie()
 
@@ -57,8 +61,10 @@ func (f *Feeder) initParamsOrDie() {
 	}
 }
 
-// loop waits for events coming from the event stream and handles them. It also waits from stop signals
-// and closes all the connections and components.
+// loop is the main event processing loop. It handles three types of events:
+// 1. Stop signals to shutdown the feeder
+// 2. Parameter updates from the blockchain
+// 3. New voting periods that trigger price submissions
 func (f *Feeder) loop() {
 	defer f.close()
 
@@ -77,7 +83,7 @@ func (f *Feeder) loop() {
 	}
 }
 
-// close closes all the connections and components.
+// close properly shuts down all feeder components.
 func (f *Feeder) close() {
 	f.eventStream.Close()
 	f.pricePoster.Close()
@@ -85,10 +91,13 @@ func (f *Feeder) close() {
 	close(f.done)
 }
 
+// handleParamsUpdate processes parameter updates from the blockchain.
 func (f *Feeder) handleParamsUpdate(params types.Params) {
 	f.params = params
 }
 
+// handleVotingPeriod is triggered when a new voting period starts.
+// It fetches prices for all configured pairs and submits them to the blockchain.
 func (f *Feeder) handleVotingPeriod(vp types.VotingPeriod) {
 	// gather prices
 	prices := make([]types.Price, len(f.params.Pairs))
@@ -105,6 +114,7 @@ func (f *Feeder) handleVotingPeriod(vp types.VotingPeriod) {
 	f.pricePoster.SendPrices(vp, prices)
 }
 
+// Close gracefully shuts down the feeder.
 func (f *Feeder) Close() {
 	close(f.stop)
 	<-f.done

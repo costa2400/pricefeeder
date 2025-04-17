@@ -13,15 +13,17 @@ import (
 
 var _ types.PriceProvider = (*AggregatePriceProvider)(nil)
 
-// AggregatePriceProvider aggregates multiple price providers
-// and queries them for prices.
+// AggregatePriceProvider combines multiple price providers into one.
+// It gets prices from multiple exchanges and returns the first valid price
+// it finds for each trading pair.
 type AggregatePriceProvider struct {
 	logger    zerolog.Logger
 	providers map[int]types.PriceProvider // we use a map here to provide random ranging (since golang's map range is unordered)
 }
 
-// NewAggregatePriceProvider instantiates a new AggregatePriceProvider instance
-// given multiple PriceProvider.
+// NewAggregatePriceProvider creates an AggregatePriceProvider that manages
+// multiple exchange-specific price providers. It configures connections to
+// each exchange based on the provided configuration.
 func NewAggregatePriceProvider(
 	sourcesToPairSymbolMap map[string]map[asset.Pair]types.Symbol,
 	sourceConfigMap map[string]json.RawMessage,
@@ -40,6 +42,7 @@ func NewAggregatePriceProvider(
 	}
 }
 
+// Prometheus metric for tracking price aggregation success/failure
 var aggregatePriceProvider = promauto.NewCounterVec(prometheus.CounterOpts{
 	Namespace: metrics.PrometheusNamespace,
 	Name:      "aggregate_prices_total",
@@ -47,8 +50,8 @@ var aggregatePriceProvider = promauto.NewCounterVec(prometheus.CounterOpts{
 }, []string{"pair", "source", "success"})
 
 // GetPrice fetches the first available and correct price from the wrapped PriceProviders.
-// Iteration is exhaustive and random.
-// If no correct PriceResponse is found, then an invalid PriceResponse is returned.
+// It iterates through the available providers in a randomized order until it finds
+// a valid price. If no valid price is found, it returns an invalid price.
 func (a AggregatePriceProvider) GetPrice(pair asset.Pair) types.Price {
 	// iterate randomly, if we find a valid price, we return it
 	// otherwise we go onto the next PriceProvider to ask for prices.
@@ -71,6 +74,7 @@ func (a AggregatePriceProvider) GetPrice(pair asset.Pair) types.Price {
 	}
 }
 
+// Close properly shuts down all underlying price providers.
 func (a AggregatePriceProvider) Close() {
 	for _, p := range a.providers {
 		p.Close()
